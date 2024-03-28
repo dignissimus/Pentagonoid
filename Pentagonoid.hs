@@ -1,13 +1,12 @@
-{-# LANGUAGE OverloadedRecordDot #-}
-
 module Pentagonoid where
 
 import Data (Expression (Ap, Composition, Cons, FunctionApplication, Lambda, Literal, Nil), Symbol (Identifier, Symbol), joinPaths)
-import Rewrite
+import Rewrite (Proof, ProofStep (..), reduceExpression)
 
 proveEquality :: Expression -> Expression -> Proof
 proveEquality leftExpression rightExpression = undefined
 
+listConcat :: Expression
 listConcat = Literal (Symbol "++")
 
 xs :: Expression
