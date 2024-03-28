@@ -2,7 +2,7 @@
 
 module Pentagonoid where
 
-import Data (Expression (Ap, Composition, FunctionApplication, Lambda, Literal, Nil), Symbol (Identifier, Symbol), joinPaths)
+import Data (Expression (Ap, Composition, Cons, FunctionApplication, Lambda, Literal, Nil), Symbol (Identifier, Symbol), joinPaths)
 import Rewrite
 
 proveEquality :: Expression -> Expression -> Proof
@@ -19,53 +19,81 @@ ys = Literal (Symbol "ys")
 zs :: Expression
 zs = Literal (Symbol "zs")
 
-x :: Symbol
-x = Identifier 0
+ws :: Expression
+ws = Literal (Symbol "ws")
+
+p :: Symbol
+p = Symbol "p"
+
+x :: Expression
+x = Literal $ Symbol "x"
+
+y :: Expression
+y = Literal $ Symbol "y"
+
+z :: Expression
+z = Literal $ Symbol "z"
+
+w :: Expression
+w = Literal $ Symbol "w"
 
 concatAssoc = Literal (Symbol "++-assoc")
 
--- ++-assoc ([] ++ xs) ys zs ∙ ++-assoc [] xs (ys ++ zs)
-leftExpression :: Expression
-leftExpression =
+lhs :: Expression -> Expression -> Expression -> Expression -> Expression
+lhs xs ys zs ws =
   joinPaths
     [ FunctionApplication
         concatAssoc
-        [ FunctionApplication listConcat [Nil, xs],
+        [ FunctionApplication listConcat [ws, xs],
           ys,
           zs
         ],
       FunctionApplication
         concatAssoc
-        [ Nil,
+        [ ws,
           xs,
           FunctionApplication listConcat [ys, zs]
         ]
     ]
 
--- ap (_++ zs) (++-assoc [] xs ys) ∙ ++-assoc [] (xs ++ ys) zs ∙ ap (_++_ []) (++-assoc xs ys zs)
-rightExpression :: Expression
-rightExpression =
+rhs :: Expression -> Expression -> Expression -> Expression -> Expression
+rhs xs ys zs ws =
   joinPaths
     [ Ap
-        (Lambda x (FunctionApplication listConcat [Literal x, zs]))
-        (FunctionApplication concatAssoc [Nil, xs, ys]),
+        (Lambda p (FunctionApplication listConcat [Literal p, zs]))
+        (FunctionApplication concatAssoc [ws, xs, ys]),
       FunctionApplication
         concatAssoc
-        [ Nil,
+        [ ws,
           FunctionApplication listConcat [xs, ys],
           zs
         ],
       Ap
-        (Lambda x (FunctionApplication listConcat [Nil, Literal x]))
+        (Lambda p (FunctionApplication listConcat [ws, Literal p]))
         (FunctionApplication concatAssoc [xs, ys, zs])
     ]
 
+-- ++-assoc ([] ++ xs) ys zs ∙ ++-assoc [] xs (ys ++ zs)
+leftExpression :: Expression
+leftExpression = lhs xs ys zs Nil
+
+-- ap (_++ zs) (++-assoc [] xs ys) ∙ ++-assoc [] (xs ++ ys) zs ∙ ap (_++_ []) (++-assoc xs ys zs)
+rightExpression :: Expression
+rightExpression = rhs xs ys zs Nil
+
+simplify :: Expression -> Expression
+simplify expression =
+  case reduceExpression expression of
+    [] -> expression
+    ls -> expression where ProofStep _ expression = last ls
+
 leftReduction :: [ProofStep]
-leftReduction = simplify leftExpression
+leftReduction = reduceExpression leftExpression
 
 rightReduction :: [ProofStep]
-rightReduction = simplify rightExpression
+rightReduction = reduceExpression rightExpression
 
+main :: IO ()
 main = do
   print leftReduction
   print rightReduction

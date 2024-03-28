@@ -15,6 +15,9 @@ data RewriteRule
   | NilConcatOne
   | NilConcatTwo
   | ConstantFunction
+  | ConcatAssocNil
+  | ConcatAssocCons
+  | ConsConcat
   deriving (Show)
 
 data Justification = Justification RewriteRule | Evident deriving (Show)
@@ -116,9 +119,10 @@ reductionStepRecursive expression@(Cons left right) =
     ]
 reductionStepRecursive expression = reductionStep expression
 
-simplify :: Expression -> [ProofStep]
-simplify = unfoldr reductionStepRecursive
+reduceExpression :: Expression -> [ProofStep]
+reduceExpression = unfoldr reductionStepRecursive
 
+-- TODO: NilConcatTwo,
 rewriteRules :: [RewriteRule]
 rewriteRules =
   [ -- Rule used for testing
@@ -138,7 +142,11 @@ rewriteRules =
     -- Use the definition of list concatenation to reduce (Nil ++ xs) to txs
     NilConcatTwo,
     -- Reduce constant functions to the identity function
-    ConstantFunction
+    ConstantFunction,
+    --
+    ConcatAssocNil,
+    ConcatAssocCons,
+    ConsConcat
   ]
 
 applyRewrite :: RewriteRule -> Expression -> Maybe (ProofStep, Expression)
@@ -156,6 +164,9 @@ applyRewrite' ApId = applyApId
 applyRewrite' NilConcatOne = applyNilConcatOne
 applyRewrite' NilConcatTwo = applyNilConcatTwo
 applyRewrite' ConstantFunction = applyConstantFunction
+applyRewrite' ConcatAssocNil = applyConcatAssocNil
+applyRewrite' ConcatAssocCons = applyConcatAssocCons
+applyRewrite' ConsConcat = applyConsConcat
 
 applyAbsurdRule :: RewriteRuleDefinition
 applyAbsurdRule (Literal (Symbol "absurd-x")) = do
@@ -218,6 +229,7 @@ applyConstantFunction = rewriteFunction constantFunctionReduce
 
 applyApId :: RewriteRuleDefinition
 applyApId (Ap f IdentityPath) = Just $ ProofStep (Justification ApId) IdentityPath
+applyApId (Ap (IdentityFunction _) p) = Just $ ProofStep (Justification ApId) p
 applyApId _ = Nothing
 
 nilConcatOne :: FunctionRewrite
@@ -227,6 +239,29 @@ nilConcatOne _ = Nothing
 applyNilConcatOne :: RewriteRuleDefinition
 applyNilConcatOne = rewriteFunction nilConcatOne
 
+concat' xs ys = FunctionApplication (Literal (Symbol "++")) [xs, ys]
+
+-- TODO: Perhaps generalise these
 applyNilConcatTwo :: Expression -> Maybe ProofStep
 applyNilConcatTwo (FunctionApplication (Literal (Symbol "++")) [Nil, xs]) = Just $ ProofStep (Justification NilConcatTwo) xs
 applyNilConcatTwo _ = Nothing
+
+applyConsConcat :: Expression -> Maybe ProofStep
+applyConsConcat (FunctionApplication (Literal (Symbol "++")) [Cons x xs, ys]) = Just $ ProofStep (Justification NilConcatTwo) (Cons x (concat' xs ys))
+applyConsConcat _ = Nothing
+
+applyConcatAssocNil :: Expression -> Maybe ProofStep
+applyConcatAssocNil (FunctionApplication (Literal (Symbol "++-assoc")) [Nil, ys, zs]) = Just $ ProofStep (Justification NilConcatTwo) IdentityPath
+applyConcatAssocNil _ = Nothing
+
+x_ = Identifier 0
+
+x_' = Literal x_
+
+concatAssoc' xs ys zs = FunctionApplication (Literal (Symbol "++")) [xs, ys, zs]
+
+consOne' x = FunctionApplication (Literal (Symbol "_∷_")) [x]
+
+applyConcatAssocCons :: Expression -> Maybe ProofStep
+applyConcatAssocCons (FunctionApplication (Literal (Symbol "++-assoc")) [Cons x xs, ys, zs]) = Just $ ProofStep (Justification NilConcatTwo) $ Ap (Lambda x_ (consOne' x_')) (concatAssoc' xs ys zs)
+applyConcatAssocCons _ = Nothing
