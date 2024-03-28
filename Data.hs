@@ -2,14 +2,12 @@
 
 module Data where
 
-import Data.List (intersperse)
-
 data Symbol = Symbol String | Identifier Integer | Unknown deriving (Eq)
 
 instance Show Symbol where
   show :: Symbol -> String
   show (Symbol s) = s
-  show (Identifier n) = "_" ++ show n
+  show (Identifier n) = "a" ++ show n
   show Unknown = "_"
 
 type ExpressionType = Symbol
@@ -24,6 +22,7 @@ data Expression
   | Cons Expression Expression
   | IdentityFunction ExpressionType
   | Lambda Symbol Expression
+  deriving (Eq)
 
 quote :: Expression -> String
 quote = ("(" ++) . (++ ")") . show
@@ -36,8 +35,8 @@ show' IdentityPath = ["idp _"]
 show' (Literal sym) = [show sym]
 show' Nil = ["[]"]
 show' (Cons x xs) = [quote x, "∷", quote xs]
-show' (IdentityFunction _) = ["idFun _"]
-show' (Lambda sym e) = ["λ", show sym, quote e]
+show' (IdentityFunction _) = ["idfun _"]
+show' (Lambda sym e) = ["λ", show sym, "→", quote e]
 
 instance Show Expression where
   show :: Expression -> String

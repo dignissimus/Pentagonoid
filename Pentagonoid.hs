@@ -1,13 +1,10 @@
 module Pentagonoid where
 
 import Data (Expression (Ap, Composition, Cons, FunctionApplication, Lambda, Literal, Nil), Symbol (Identifier, Symbol), joinPaths)
-import Rewrite (Proof, ProofStep (..), reduceExpression)
-
-proveEquality :: Expression -> Expression -> Proof
-proveEquality leftExpression rightExpression = undefined
+import Rewrite (Proof, ProofStep (..), joinProofs, mkProof, reduceExpression, reverseProof)
 
 listConcat :: Expression
-listConcat = Literal (Symbol "++")
+listConcat = Literal (Symbol "_++_")
 
 xs :: Expression
 xs = Literal (Symbol "xs")
@@ -36,6 +33,7 @@ z = Literal $ Symbol "z"
 w :: Expression
 w = Literal $ Symbol "w"
 
+concatAssoc :: Expression
 concatAssoc = Literal (Symbol "++-assoc")
 
 lhs :: Expression -> Expression -> Expression -> Expression -> Expression
@@ -92,7 +90,21 @@ leftReduction = reduceExpression leftExpression
 rightReduction :: [ProofStep]
 rightReduction = reduceExpression rightExpression
 
+leftProof :: Proof
+leftProof = mkProof leftExpression leftReduction
+
+rightProof :: Proof
+rightProof = reverseProof $ mkProof rightExpression rightReduction
+
+reduceAndProve :: Expression -> Proof
+reduceAndProve expression = mkProof expression (reduceExpression expression)
+
+proveEquality :: Expression -> Expression -> Proof
+proveEquality left right = joinProofs (mkProof left (reduceExpression left)) (reverseProof $ mkProof right (reduceExpression right))
+
+prove :: Expression -> Expression -> Expression -> Expression -> Proof
+prove xs ys zs ws = proveEquality (lhs xs ys zs ws) (rhs xs ys zs ws)
+
 main :: IO ()
 main = do
-  print leftReduction
-  print rightReduction
+  print $ proveEquality leftExpression rightExpression

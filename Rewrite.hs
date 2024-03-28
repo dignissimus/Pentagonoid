@@ -20,7 +20,25 @@ data RewriteRule
   | ConsConcat
   deriving (Show)
 
-data Justification = Justification RewriteRule | Evident deriving (Show)
+data Justification = Justification RewriteRule | Evident | Symm RewriteRule | Hole
+
+justify :: RewriteRule -> String
+justify LeftIdentity = "sym (lUnit _)"
+justify RightIdentity = "sym (rUnit _)"
+justify _ = ""
+
+instance Show Justification where
+  show :: Justification -> String
+  show Evident = ""
+  show (Symm r) =
+    if justify r == ""
+      then ""
+      else " sym (" ++ justify r ++ ") "
+  show (Justification r) =
+    if justify r == ""
+      then ""
+      else " " ++ justify r ++ " "
+  show Hole = " ? "
 
 data ProofStep = ProofStep Justification Expression deriving (Show)
 
@@ -34,6 +52,72 @@ data Proof = Proof
     -- Redundant
     end :: Expression
   }
+
+joinProofs :: Proof -> Proof -> Proof
+joinProofs Proof {start, steps, end} Proof {start = start', steps = steps', end = end'} =
+  if end == start'
+    then
+      Proof
+        { start,
+          steps = steps ++ steps',
+          end = end'
+        }
+    else
+      Proof
+        { start,
+          steps = steps ++ ProofStep Hole start' : steps',
+          end = end'
+        }
+
+instance Show Proof where
+  show :: Proof -> String
+  show Proof {start, steps, end} =
+    "    "
+      ++ show start
+      ++ go steps
+    where
+      go [] = ""
+      go (s : ss) =
+        "\n  ≡⟨"
+          ++ show justificatoin
+          ++ "⟩"
+          ++ "\n    "
+          ++ show expression
+          ++ go ss
+        where
+          ProofStep justificatoin expression = s
+
+mkProof :: Expression -> [ProofStep] -> Proof
+mkProof start steps =
+  Proof
+    { start,
+      steps = steps,
+      end = expression
+    }
+  where
+    ProofStep _ expression = last steps
+
+symm :: Justification -> Justification
+symm Evident = Evident
+symm Hole = Hole
+symm (Justification rewrite) = Symm rewrite
+
+flipStep :: ProofStep -> ProofStep
+flipStep (ProofStep justification expression) = ProofStep (symm justification) expression
+
+reverseProof :: Proof -> Proof
+reverseProof Proof {start, steps, end} =
+  Proof
+    { start = end,
+      end = start,
+      steps = steps'
+    }
+  where
+    steps' = fmap (uncurry ProofStep) (zip justifications' expressions')
+    justifications' = reverse justifications
+    expressions' = drop 1 $ reverse (start : expressions)
+    (justifications, expressions) = unzip . fmap (unwrap . flipStep) $ steps
+    unwrap (ProofStep j e) = (j, e)
 
 -- TODO: Ensure expressions are associated in the nice way
 reductionStep :: Expression -> Maybe (ProofStep, Expression)
@@ -233,35 +317,51 @@ applyApId (Ap (IdentityFunction _) p) = Just $ ProofStep (Justification ApId) p
 applyApId _ = Nothing
 
 nilConcatOne :: FunctionRewrite
-nilConcatOne ((FunctionApplication (Literal (Symbol "++")) [Nil])) = Just (IdentityFunction Unknown, Evident)
+nilConcatOne ((FunctionApplication (Literal (Symbol "_++_")) [Nil])) = Just (IdentityFunction Unknown, Evident)
 nilConcatOne _ = Nothing
 
 applyNilConcatOne :: RewriteRuleDefinition
 applyNilConcatOne = rewriteFunction nilConcatOne
 
-concat' xs ys = FunctionApplication (Literal (Symbol "++")) [xs, ys]
+concat' xs ys = FunctionApplication (Literal (Symbol "_++_")) [xs, ys]
 
 -- TODO: Perhaps generalise these
 applyNilConcatTwo :: Expression -> Maybe ProofStep
-applyNilConcatTwo (FunctionApplication (Literal (Symbol "++")) [Nil, xs]) = Just $ ProofStep (Justification NilConcatTwo) xs
+applyNilConcatTwo (FunctionApplication (Literal (Symbol "_++_")) [Nil, xs]) = Just $ ProofStep (Justification NilConcatTwo) xs
 applyNilConcatTwo _ = Nothing
 
 applyConsConcat :: Expression -> Maybe ProofStep
-applyConsConcat (FunctionApplication (Literal (Symbol "++")) [Cons x xs, ys]) = Just $ ProofStep (Justification NilConcatTwo) (Cons x (concat' xs ys))
+applyConsConcat (FunctionApplication (Literal (Symbol "_++_")) [Cons x xs, ys]) = Just $ ProofStep (Justification NilConcatTwo) (Cons x (concat' xs ys))
 applyConsConcat _ = Nothing
 
 applyConcatAssocNil :: Expression -> Maybe ProofStep
 applyConcatAssocNil (FunctionApplication (Literal (Symbol "++-assoc")) [Nil, ys, zs]) = Just $ ProofStep (Justification NilConcatTwo) IdentityPath
 applyConcatAssocNil _ = Nothing
 
+x_ :: Symbol
 x_ = Identifier 0
 
+x_' :: Expression
 x_' = Literal x_
 
-concatAssoc' xs ys zs = FunctionApplication (Literal (Symbol "++")) [xs, ys, zs]
+concatAssoc' :: Expression -> Expression -> Expression -> Expression
+concatAssoc' xs ys zs = FunctionApplication (Literal (Symbol "++-assoc")) [xs, ys, zs]
 
+consOne' :: Expression -> Expression
 consOne' x = FunctionApplication (Literal (Symbol "_∷_")) [x]
 
+
+consTwo' :: Expression -> Expression -> Expression
+consTwo' x y = FunctionApplication (Literal (Symbol "_∷_")) [x, y]
+
 applyConcatAssocCons :: Expression -> Maybe ProofStep
-applyConcatAssocCons (FunctionApplication (Literal (Symbol "++-assoc")) [Cons x xs, ys, zs]) = Just $ ProofStep (Justification NilConcatTwo) $ Ap (Lambda x_ (consOne' x_')) (concatAssoc' xs ys zs)
+applyConcatAssocCons
+  ( FunctionApplication
+      (Literal (Symbol "++-assoc"))
+      [Cons x xs, ys, zs]
+    ) =
+    Just
+      $ ProofStep
+        (Justification NilConcatTwo)
+       (Ap (Lambda x_ (consTwo' x x_')) (concatAssoc' xs ys zs))
 applyConcatAssocCons _ = Nothing
