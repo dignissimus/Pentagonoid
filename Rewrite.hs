@@ -22,14 +22,24 @@ data RewriteRule
   | CustomRewrite CustomRewriteRule
   deriving (Show)
 
+data RewriteRuleJustification
+  = LeftIdentityRule
+  | RightIdentityRule
+  | ApFusionRule Expression Expression Expression
+  | NilConcatTwoRule
+
 data CustomRewriteRule deriving (Show)
 
-data Justification = Justification RewriteRule | Evident | Symm RewriteRule | Hole
+data Justification
+  = Justification RewriteRuleJustification
+  | Evident
+  | Symm RewriteRuleJustification
+  | Hole
 
-justify :: RewriteRule -> String
-justify LeftIdentity = "sym (lUnit _)"
-justify RightIdentity = "sym (rUnit _)"
-justify ApFusion = "sym (ap-compPath _ _ _)"
+justify :: RewriteRuleJustification -> String
+justify LeftIdentityRule = "sym (lUnit _)"
+justify RightIdentityRule = "sym (rUnit _)"
+justify (ApFusionRule f p q) = "sym (ap-compPath " ++ quote f ++ " " ++ quote p ++ " " ++ quote q ++ ")"
 justify _ = ""
 
 instance Show Justification where
@@ -277,12 +287,12 @@ reduceRightIdentity _ = Nothing
 applyLeftIdentity :: RewriteRuleDefinition
 applyLeftIdentity expression = do
   right <- reduceLeftIdentity expression
-  return $ ProofStep (Justification LeftIdentity) right
+  return $ ProofStep (Justification LeftIdentityRule) right
 
 applyRightIdentity :: RewriteRuleDefinition
 applyRightIdentity expression = do
   left <- reduceRightIdentity expression
-  return $ ProofStep (Justification RightIdentity) left
+  return $ ProofStep (Justification RightIdentityRule) left
 
 applyApplyIdentityFunction :: RewriteRuleDefinition
 applyApplyIdentityFunction (FunctionApplication (IdentityFunction _) [expression]) = do
@@ -319,8 +329,8 @@ applyConstantFunction :: RewriteRuleDefinition
 applyConstantFunction = rewriteFunction constantFunctionReduce
 
 applyApId :: RewriteRuleDefinition
-applyApId (Ap f IdentityPath) = Just $ ProofStep (Justification ApId) IdentityPath
-applyApId (Ap (IdentityFunction _) p) = Just $ ProofStep (Justification ApId) p
+applyApId (Ap f IdentityPath) = Just $ ProofStep Evident IdentityPath
+applyApId (Ap (IdentityFunction _) p) = Just $ ProofStep Evident p
 applyApId _ = Nothing
 
 nilConcatOne :: FunctionRewrite
@@ -333,7 +343,7 @@ applyNilConcatOne = rewriteFunction nilConcatOne
 applyApFusion :: RewriteRuleDefinition
 applyApFusion (Composition (Ap f p) (Ap f' p')) =
   if f == f'
-    then Just $ ProofStep (Justification ApFusion) (Ap f (Composition p p'))
+    then Just $ ProofStep (Justification (ApFusionRule f p p')) (Ap f (Composition p p'))
     else Nothing
 applyApFusion _ = Nothing
 
@@ -342,15 +352,15 @@ concat' xs ys = FunctionApplication (Literal (Symbol "_++_")) [xs, ys]
 
 -- TODO: Perhaps generalise these
 applyNilConcatTwo :: Expression -> Maybe ProofStep
-applyNilConcatTwo (FunctionApplication (Literal (Symbol "_++_")) [Nil, xs]) = Just $ ProofStep (Justification NilConcatTwo) xs
+applyNilConcatTwo (FunctionApplication (Literal (Symbol "_++_")) [Nil, xs]) = Just $ ProofStep Evident xs
 applyNilConcatTwo _ = Nothing
 
 applyConsConcat :: Expression -> Maybe ProofStep
-applyConsConcat (FunctionApplication (Literal (Symbol "_++_")) [Cons x xs, ys]) = Just $ ProofStep (Justification NilConcatTwo) (Cons x (concat' xs ys))
+applyConsConcat (FunctionApplication (Literal (Symbol "_++_")) [Cons x xs, ys]) = Just $ ProofStep Evident (Cons x (concat' xs ys))
 applyConsConcat _ = Nothing
 
 applyConcatAssocNil :: Expression -> Maybe ProofStep
-applyConcatAssocNil (FunctionApplication (Literal (Symbol "++-assoc")) [Nil, ys, zs]) = Just $ ProofStep (Justification NilConcatTwo) IdentityPath
+applyConcatAssocNil (FunctionApplication (Literal (Symbol "++-assoc")) [Nil, ys, zs]) = Just $ ProofStep Evident IdentityPath
 applyConcatAssocNil _ = Nothing
 
 x_ :: Symbol
@@ -376,6 +386,6 @@ applyConcatAssocCons
     ) =
     Just $
       ProofStep
-        (Justification NilConcatTwo)
+        (Justification NilConcatTwoRule)
         (Ap (Lambda x_ (consTwo' x x_')) (concatAssoc' xs ys zs))
 applyConcatAssocCons _ = Nothing
