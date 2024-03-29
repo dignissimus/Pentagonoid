@@ -18,13 +18,18 @@ data RewriteRule
   | ConcatAssocNil
   | ConcatAssocCons
   | ConsConcat
+  | ApFusion
+  | CustomRewrite CustomRewriteRule
   deriving (Show)
+
+data CustomRewriteRule deriving (Show)
 
 data Justification = Justification RewriteRule | Evident | Symm RewriteRule | Hole
 
 justify :: RewriteRule -> String
 justify LeftIdentity = "sym (lUnit _)"
 justify RightIdentity = "sym (rUnit _)"
+justify ApFusion = "sym (ap-compPath _ _ _)"
 justify _ = ""
 
 instance Show Justification where
@@ -230,7 +235,8 @@ rewriteRules =
     --
     ConcatAssocNil,
     ConcatAssocCons,
-    ConsConcat
+    ConsConcat,
+    ApFusion
   ]
 
 applyRewrite :: RewriteRule -> Expression -> Maybe (ProofStep, Expression)
@@ -251,6 +257,7 @@ applyRewrite' ConstantFunction = applyConstantFunction
 applyRewrite' ConcatAssocNil = applyConcatAssocNil
 applyRewrite' ConcatAssocCons = applyConcatAssocCons
 applyRewrite' ConsConcat = applyConsConcat
+applyRewrite' ApFusion = applyApFusion
 
 applyAbsurdRule :: RewriteRuleDefinition
 applyAbsurdRule (Literal (Symbol "absurd-x")) = do
@@ -323,6 +330,14 @@ nilConcatOne _ = Nothing
 applyNilConcatOne :: RewriteRuleDefinition
 applyNilConcatOne = rewriteFunction nilConcatOne
 
+applyApFusion :: RewriteRuleDefinition
+applyApFusion (Composition (Ap f p) (Ap f' p')) =
+  if f == f'
+    then Just $ ProofStep (Justification ApFusion) (Ap f (Composition p p'))
+    else Nothing
+applyApFusion _ = Nothing
+
+concat' :: Expression -> Expression -> Expression
 concat' xs ys = FunctionApplication (Literal (Symbol "_++_")) [xs, ys]
 
 -- TODO: Perhaps generalise these
@@ -350,7 +365,6 @@ concatAssoc' xs ys zs = FunctionApplication (Literal (Symbol "++-assoc")) [xs, y
 consOne' :: Expression -> Expression
 consOne' x = FunctionApplication (Literal (Symbol "_∷_")) [x]
 
-
 consTwo' :: Expression -> Expression -> Expression
 consTwo' x y = FunctionApplication (Literal (Symbol "_∷_")) [x, y]
 
@@ -360,8 +374,8 @@ applyConcatAssocCons
       (Literal (Symbol "++-assoc"))
       [Cons x xs, ys, zs]
     ) =
-    Just
-      $ ProofStep
+    Just $
+      ProofStep
         (Justification NilConcatTwo)
-       (Ap (Lambda x_ (consTwo' x x_')) (concatAssoc' xs ys zs))
+        (Ap (Lambda x_ (consTwo' x x_')) (concatAssoc' xs ys zs))
 applyConcatAssocCons _ = Nothing
